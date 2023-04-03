@@ -1,0 +1,12 @@
+Category,Trade Name,Address,Licence Number,Licence Status,Issue Date,Expiry Date,Business Improvement Area,Neighbourhood ID,Neighbourhood,Ward,Latitude,Longitude,Location,Count,Geometry Point
+"Restaurant or Food Service, Alcohol Sales (Consumption On-Premises / Minors Allowed)",GOOD BUDDY RESTAURANT,2059 - 111 STREET NW,007402540-001,Issued,,"Jan 23, 2025",,5250,Keheewin,Ipiihkoohkanipiaohtsi,53.452334,-113.513673,"(53.45233403851745, -113.51367312756646)",1,POINT (-113.51367312756646 53.45233403851745)
+Alcohol Sales (Consumption Off-Premises),CALL IT SPRING,"16, 5015 - 111 STREET NW",166033164-002,Issued,,"Dec 03, 2023",,5170,Empire Park,papastew,53.485787,-113.513412,"(53.48578703650941, -113.51341211646458)",1,POINT (-113.51341211646458 53.48578703650941)
+Restaurant or Food Service,LAZIO ITALIAN CAFE,"2117, 8882 - 170 STREET NW",280540889-002,Issued,,"May 07, 2023",,4520,Summerlea,sipiwiyiniwak,53.522273,-113.618303,"(53.5222730468383, -113.61830258079999)",1,POINT (-113.61830258079999 53.5222730468383)
+Alcohol Sales (Consumption On-Premises / Minors Prohibited),BTU MECHANICAL,,269874080-002,Issued,,"Feb 12, 2025",,,,,,,,1,
+Alcohol Sales (Consumption Off-Premises),DEL APARTMENTS,10190 - 115 STREET NW,152488591-001,Issued,,"Jan 21, 2024",,1150,Oliver,O-day'min,53.542811,-113.519991,"(53.54281103393197, -113.51999109590639)",1,POINT (-113.51999109590639 53.54281103393197)
+Cannabis Retail Sales,LAYFIELD CANADA LTD,17720 - 129 AVENUE NW,148638273-001,Renewal Notice,,"Mar 31, 2023",,4475,Kinokamau Plains Area,Nakota Isga,53.591069,-113.625750,"(53.591069043703136, -113.62575005601603)",1,POINT (-113.62575005601603 53.591069043703136)
+Cannabis Retail Sales,AGP TRUCKING LTD,,101481614-002,Issued,,"Oct 13, 2023",,,,,,,,1,
+General Business,EDUCATIONAL VIVARIUM OF ALBERTA,,007267986-001,Issued,,"Jan 24, 2024",,,,,,,,1,
+Delivery and Logistic Service,A J G TRUCKING LTD,,284285812-002,Issued,,"Sep 04, 2024",,,,,,,,1,
+"Wholesale, Warehouse, and Storage",SIGN GURU SHERWOOD PARK,,223252909-001,Issued,,"Jun 25, 2024",,,,,,,,1,
+"Alcohol Sales (Consumption Off-Premises), Restaurant or Food Service",PIZZA 73,"101, 13708 - 164 STREET NW",285875474-002,Issued,,"Aug 13, 2023",,4320,Mistatim Industrial,Anirniq,53.599934,-113.605644,"(53.599934040788376, -113.60564405752613)",1,POINT (-113.60564405752613 53.599934040788376)
