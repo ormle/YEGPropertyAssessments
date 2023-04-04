@@ -2,7 +2,6 @@
 
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
-<?import javafx.scene.control.CheckBox?>
 <?import javafx.scene.control.ComboBox?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.ScrollPane?>
@@ -22,7 +21,6 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.shape.Line?>
 <?import javafx.scene.text.Font?>
-
 
 <ScrollPane xmlns="http://javafx.com/javafx/19" xmlns:fx="http://javafx.com/fxml/1" fx:controller="DataControllers.BusinessesDataController">
    <content>
@@ -174,11 +172,6 @@
                               <Insets top="10.0" />
                            </VBox.margin>
                         </Line>
-                        <CheckBox fx:id="includePropertyBox" mnemonicParsing="false" prefHeight="44.0" prefWidth="165.0" text="Search Relative to Property">
-                           <VBox.margin>
-                              <Insets top="10.0" />
-                           </VBox.margin>
-                        </CheckBox>
                         <Button fx:id="resetButton" disable="true" mnemonicParsing="false" prefHeight="26.0" prefWidth="226.0" text="Reset">
                            <font>
                               <Font size="18.0" />
@@ -263,9 +256,9 @@
                                  <children>
                                     <ScrollPane>
                                        <content>
-                                          <BorderPane prefHeight="1078.0" prefWidth="1343.0">
+                                          <BorderPane minHeight="-Infinity" minWidth="-Infinity" prefHeight="760.0" prefWidth="1000.0">
                                              <center>
-                                                <TableView fx:id="businessesDataTable" prefHeight="1018.0" prefWidth="1504.0" BorderPane.alignment="CENTER">
+                                                <TableView fx:id="businessesDataTable" minHeight="-Infinity" minWidth="-Infinity" prefHeight="720.0" prefWidth="1280.0" BorderPane.alignment="CENTER">
                                                    <columns>
                                                       <TableColumn fx:id="nameTableColumn" editable="false" prefWidth="172.0" text="Name" />
                                                       <TableColumn fx:id="addressTableColumn" editable="false" prefWidth="204.0" text="Address" />
