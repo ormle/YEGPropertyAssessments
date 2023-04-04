@@ -85,8 +85,6 @@ public class BusinessesDataController implements Initializable {
     @FXML
     private AnchorPane propertyPane;
     @FXML
-    private CheckBox includePropertyBox;
-    @FXML
     private TextField nameInput;
 
     @FXML
@@ -159,7 +157,6 @@ public class BusinessesDataController implements Initializable {
         searchButton.setOnAction(event -> search());
         resetButton.setOnAction(event -> resetSearchFilters());
 
-        includePropertyBox.setOnAction(event -> setPropertyPane());
 
         //Initialises business map
         // Note: it is not best practice to store API keys in source code.
@@ -593,7 +590,6 @@ public class BusinessesDataController implements Initializable {
     }
 
     private void setPropertyPane(){
-        propertyPane.setVisible(includePropertyBox.isSelected());
         propertyInfo.setText("Account: " + property.getAccount() + "\n" + property.getLocation().getAddress() + "\n"
                 + property.getLocation().getNeighbourhood());
     }
