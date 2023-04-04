@@ -168,7 +168,8 @@ public class App extends Application {
         FXMLLoader fxmlLoader = new FXMLLoader(getClass().getResource("/PropertyAsessmentsDataView.fxml"));
         propertyTab.setContent(fxmlLoader.load());
         //Set content of business tab
-        fxmlLoader = new FXMLLoader(getClass().getResource("/BusinessesDataView.fxml"));
+        //fxmlLoader = new FXMLLoader(getClass().getResource("/BusinessesDataView.fxml"));
+        fxmlLoader = new FXMLLoader(getClass().getResource("/test.fxml"));
         businessTab.setContent(fxmlLoader.load());
 
         // create a JavaFX scene with a stack pane as the root node, and add it to the scene

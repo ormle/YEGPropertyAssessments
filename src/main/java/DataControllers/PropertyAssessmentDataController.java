@@ -10,6 +10,8 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import DAO.*;
 import classes.*;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 
 import java.net.URL;
 import java.text.NumberFormat;
@@ -94,6 +96,22 @@ public class PropertyAssessmentDataController implements Initializable{
 
         //load more data
         loadMoreApiDataButton.setOnAction(event -> loadMoreData());
+
+        assessmentDataTable.setRowFactory( tv -> {
+            TableRow<PropertyAssessment> row = new TableRow<>();
+            row.setOnMouseClicked(event -> {
+                if (event.getClickCount() == 2 && (! row.isEmpty()) ) {
+                    PropertyAssessment rowData = row.getItem();
+
+                    final ClipboardContent content = new ClipboardContent();
+                    content.putString(String.valueOf(rowData.getAccount()));
+                    Clipboard.getSystemClipboard().setContent(content);
+
+                    throwAlert("Copied to Clipboard", "Account Number Copied to Clipboard\nAccount number: "+ rowData.getAccount());
+                }
+            });
+            return row ;
+        });
 
         //for number currency format
         NumberFormat currencyFormat = NumberFormat.getCurrencyInstance();
