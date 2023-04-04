@@ -104,10 +104,10 @@ public class PropertyAssessmentDataController implements Initializable{
                     PropertyAssessment rowData = row.getItem();
 
                     final ClipboardContent content = new ClipboardContent();
-                    content.putString(String.valueOf(rowData.getAccount()));
+                    content.putString(String.valueOf(rowData.getLocation().getAddress()) + " Edmonton Alberta");
                     Clipboard.getSystemClipboard().setContent(content);
 
-                    throwAlert("Copied to Clipboard", "Account Number Copied to Clipboard\nAccount number: "+ rowData.getAccount());
+                    throwAlert("Copied to Clipboard", "Address Copied to Clipboard\nAddress: "+ rowData.getLocation().getAddress());
                 }
             });
             return row ;
