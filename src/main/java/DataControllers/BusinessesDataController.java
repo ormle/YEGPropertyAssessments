@@ -2,18 +2,20 @@ package DataControllers;
 
 import com.esri.arcgisruntime.ArcGISRuntimeEnvironment;
 import com.esri.arcgisruntime.concurrent.ListenableFuture;
+import com.esri.arcgisruntime.data.*;
+import com.esri.arcgisruntime.geometry.Envelope;
 import com.esri.arcgisruntime.geometry.Point;
-import com.esri.arcgisruntime.geometry.SpatialReferences;
+import com.esri.arcgisruntime.layers.FeatureLayer;
+import com.esri.arcgisruntime.layers.Layer;
 import com.esri.arcgisruntime.loadable.LoadStatus;
 import com.esri.arcgisruntime.mapping.ArcGISMap;
 import com.esri.arcgisruntime.mapping.BasemapStyle;
 import com.esri.arcgisruntime.mapping.Viewpoint;
 import com.esri.arcgisruntime.mapping.view.*;
+import com.esri.arcgisruntime.portal.Portal;
+import com.esri.arcgisruntime.portal.PortalItem;
 import com.esri.arcgisruntime.symbology.PictureMarkerSymbol;
-import com.esri.arcgisruntime.symbology.SimpleMarkerSymbol;
-import com.esri.arcgisruntime.symbology.Symbol;
 import com.esri.arcgisruntime.tasks.geocode.GeocodeParameters;
-import com.esri.arcgisruntime.tasks.geocode.GeocodeResult;
 import com.esri.arcgisruntime.tasks.geocode.LocatorTask;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleObjectProperty;
@@ -23,19 +25,23 @@ import javafx.collections.ObservableList;
 import javafx.event.EventHandler;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
+import javafx.geometry.Insets;
 import javafx.geometry.Point2D;
+import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
-import javafx.scene.layout.AnchorPane;
+import javafx.scene.layout.*;
 import DAO.BusinessDAO;
 import classes.*;
-import javafx.scene.layout.StackPane;
+import javafx.scene.paint.Color;
+import javafx.scene.paint.Paint;
 import javafx.util.Duration;
 
 import java.net.URL;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 public class BusinessesDataController implements Initializable {
@@ -101,7 +107,6 @@ public class BusinessesDataController implements Initializable {
 
     private LocatorTask locatorTask;
 
-    private ProgressIndicator progressIndicator;
     ObservableList<String> neighbourhoods;
 
     private static final String CAMPSITE_SYMBOL = "http://maps.google.com/mapfiles/ms/icons/blue.png";
@@ -112,6 +117,16 @@ public class BusinessesDataController implements Initializable {
             "Liquor Stores", "Restaurants"));
 
     ObservableList<Business> businesses;
+    private ServiceFeatureTable featureTable;
+    private VBox controlsVBox;
+    private ComboBox<String> parcelsComboBox;
+    private Label parcelsComboBoxLabel;
+    private Label color1Label;
+    private Label color2Label;
+    private Label color3Label;
+    //https://www.arcgis.com/home/item.html?id=3b64fab6e28f43b69e49ce7aadd5c353
+    private final String edmontonNeighPortalId = "3b64fab6e28f43b69e49ce7aadd5c353";
+    private final Portal portal = new Portal("https://www.arcgis.com");
 
     //filename here so it is easy to find and change
     private final String filename = "businesses_trimmed.csv";
@@ -148,11 +163,9 @@ public class BusinessesDataController implements Initializable {
         mapView = new MapView();
         ArcGISMap map = new ArcGISMap(BasemapStyle.ARCGIS_TOPOGRAPHIC);
 
-        Viewpoint point = new Viewpoint(53.547,-113.51, 144447.638572);
-
         // set the map on the map view
         mapView.setMap(map);             //Currently Macewan University
-        mapView.setViewpoint(new Viewpoint(53.547, -113.51, 144447.638572));
+        mapView.setViewpoint(new Viewpoint(53.547, -113.51, 72000));
 
         // set the callout's default style
         Callout callout = mapView.getCallout();
@@ -171,14 +184,25 @@ public class BusinessesDataController implements Initializable {
         // create new graphics overlay and add it to the map view
         mapView.getGraphicsOverlays().add(graphicsOverlay);
 
-        PictureMarkerSymbol symbol = new PictureMarkerSymbol(CAMPSITE_SYMBOL);
-        placePictureMarkerSymbol(symbol, point, graphicsOverlay, "name", "location");
+        PortalItem portalItem = new PortalItem(portal, edmontonNeighPortalId);
+        long layerId = 4;
+        featureTable = new ServiceFeatureTable(portalItem, layerId);
+        portalItem.addDoneLoadingListener(() -> {
+            if (portalItem.getLoadStatus() != LoadStatus.LOADED) {
+                new Alert(Alert.AlertType.ERROR, "Portal item not loaded. " + portalItem.getLoadError().getCause().getMessage()).show();
+            }
+        });
 
-        // create a new graphic with a our point and symbol
-        //Graphic graphic = new Graphic(point.getTargetGeometry(), symbol);
-        //graphicsOverlay.getGraphics().add(graphic);
+        setUpUI();
 
+        // create feature layer
+        createFeatureLayer(map);
+
+        controlsVBox.getChildren().addAll(parcelsComboBoxLabel, parcelsComboBox, color1Label, color2Label, color3Label);
         stackPane.getChildren().add(mapView);
+        stackPane.getChildren().add(controlsVBox);
+        stackPane.setAlignment(controlsVBox, Pos.TOP_LEFT);
+        stackPane.setMargin(controlsVBox, new Insets(10, 0, 0, 10));
         businessMap.setContent(stackPane);
 
         //listen into click events on the map view
@@ -198,8 +222,6 @@ public class BusinessesDataController implements Initializable {
                             // identify graphics on the graphics overlay
                             identifyGraphics = mapView.identifyGraphicsOverlayAsync(graphicsOverlay, clickedPoint, 1, false);
                             identifyGraphics.addDoneListener(() -> Platform.runLater(() -> createGraphicDialog(mapPoint)));
-
-
                         }
                     }
 
@@ -230,6 +252,186 @@ public class BusinessesDataController implements Initializable {
                     }
 
                 });
+    }
+
+    private void setUpUI(){
+        // create a control panel
+        controlsVBox = new VBox(6);
+        controlsVBox.setBackground(new Background(new BackgroundFill(Paint.valueOf("rgba(0,0,0,0.5)"), CornerRadii.EMPTY,
+                Insets.EMPTY)));
+        controlsVBox.setPadding(new Insets(10.0));
+        controlsVBox.setMaxSize(250, 50);
+        controlsVBox.getStyleClass().add("panel-region");
+        //Combobox
+        parcelsComboBoxLabel = new Label("WHERE EXPRESSION: ");
+        parcelsComboBoxLabel.setTextFill(Color.WHITE);
+
+        color1Label = new Label("Orange -> 3 or less Businesses");
+        color1Label.setStyle("-fx-text-fill: orange;");
+        color2Label = new Label("Red -> 4 to 10 Businesses");
+        color2Label.setStyle("-fx-text-fill: red;");
+        color3Label = new Label("Pink -> 10 or more Businesses");
+        color3Label.setStyle("-fx-text-fill: pink;");
+
+
+        // create the list of expressions for the combo box and then create the combo box
+        setNeighbourhoods();
+        parcelsComboBox = new ComboBox<>(neighbourhoods);
+        parcelsComboBox.setMaxWidth(Double.MAX_VALUE);
+
+        // set the default combo box value
+        parcelsComboBox.getSelectionModel().select(0);
+    }
+
+    // Query the feature layer, providing a Where expression and the current extent.
+    // Then select the features returned by the query.
+    private void queryFeatureLayer(String featureLayerId, String whereExpression, Envelope queryExtent) {
+        try {
+            FeatureLayer featureLayerToQuery = null;
+
+            // get the layer based on its Id
+            for (Layer layer : mapView.getMap().getOperationalLayers()) {
+                if (layer.getId().equals(featureLayerId)) {
+                    featureLayerToQuery = (FeatureLayer) layer;
+                    break;
+                }
+            }
+
+            // check if feature layer retrieved based on layer Id
+            if (featureLayerToQuery == null) {
+                String msg = "Specified Id did not match any feature layer in this map";
+                new Alert(Alert.AlertType.ERROR, msg).show();
+                return;
+            }
+
+            // get the feature table from the feature layer
+            FeatureTable featureTableToQuery = featureLayerToQuery.getFeatureTable();
+            // clear any previous selections
+            featureLayerToQuery.clearSelection();
+
+            // create a query for the state that was entered
+            QueryParameters query = new QueryParameters();
+            query.setWhereClause(whereExpression);
+            query.setReturnGeometry(true);
+            query.setGeometry(queryExtent);
+
+            // call query features
+            ListenableFuture<FeatureQueryResult> future = featureTableToQuery.queryFeaturesAsync(query);
+
+            // create an effectively final variable for access from add done listener
+            FeatureLayer finalFeatureLayerToQuery = featureLayerToQuery;
+
+            // add done listener to fire when the query returns
+            future.addDoneListener(() -> {
+                try {
+                    // check if there are some results
+                    FeatureQueryResult featureQueryResult = future.get();
+                    if (featureQueryResult.iterator().hasNext()) {
+                        for (Feature feature : featureQueryResult) {
+                            finalFeatureLayerToQuery.selectFeature(feature);
+                        }
+                    } else {
+                        String msg = "No neighbourhood found in the current extent, using Where expression: " + whereExpression + ".";
+                        new Alert(Alert.AlertType.INFORMATION, msg).show();
+                    }
+                }
+                catch (Exception e) {
+                    String msg = "Feature search failed for: " + whereExpression + ". Error: " + e.getMessage();
+                    new Alert(Alert.AlertType.ERROR, msg).show();
+                    e.printStackTrace();
+                }
+            });
+
+        } catch (Exception e) {
+            // on any error, display the stack trace
+            e.printStackTrace();
+        }
+    }
+
+    // Create and load the parcels feature layer from the feature service. When the layer is loaded, query it based on
+    // current extent and current selection in parcelsComboBox
+    private void createFeatureLayer(ArcGISMap map){
+        AtomicInteger noOfBusinesses = new AtomicInteger();
+        PortalItem portalItem = new PortalItem(portal, edmontonNeighPortalId);
+        long layerId = 4;
+        FeatureTable serviceFeatureTable =
+                new ServiceFeatureTable(portalItem, layerId);
+
+        FeatureLayer layer = new FeatureLayer(serviceFeatureTable);
+
+        // give the layer an ID, so we can easily find it later
+        //layer.setId("Parcels");
+        // Load the layer and add a done loading listener, which runs only when the layer is completely loaded.
+        layer.loadAsync();
+        layer.addDoneLoadingListener( () -> {
+            if (layer.getLoadStatus() == LoadStatus.LOADED) {
+                // get the selected item property from the combo box, and add a listener that runs
+                // when the property value is changed by the user.
+                SingleSelectionModel<String> selectionModel = parcelsComboBox.getSelectionModel();
+                selectionModel.selectedItemProperty().addListener(observable -> {
+                    if (selectionModel.getSelectedIndex() == 0) {
+                        layer.clearSelection();
+                        return;
+                    }
+                    String currentChoice = selectionModel.getSelectedItem();
+                    noOfBusinesses.set(Math.toIntExact(getNoOfBusinesses(currentChoice.substring(6, currentChoice.length() - 1),
+                            businessTypeComboBox.getSelectionModel().getSelectedItem())));
+                    //parcelsComboBoxLabel.setText(noOfBusinesses.toString());
+                    Envelope currentExtent =
+                            (Envelope) (mapView.getCurrentViewpoint(Viewpoint.Type.BOUNDING_GEOMETRY).getTargetGeometry());
+
+                    queryFeatureLayer(layer.getId(), currentChoice, currentExtent);
+                    //Set selection colour based on number of businesses in that neighbourhood
+                    if (noOfBusinesses.get() <= 3){
+                        mapView.getSelectionProperties().setColor(Color.ORANGE);
+                    }else if (noOfBusinesses.get() > 3 && noOfBusinesses.get() <= 10){
+                        mapView.getSelectionProperties().setColor(Color.RED);
+                    }else{//noOfBusinesses > 10
+                        mapView.getSelectionProperties().setColor(Color.PINK);
+                    }
+
+                });
+            }
+        });
+        //  add the layer to the map
+        map.getOperationalLayers().add(layer);
+        }
+
+    private long getNoOfBusinesses(String Neighbourhood, String BusinessType){
+        String neigh = Neighbourhood.charAt(0) + Neighbourhood.substring(1).toLowerCase();
+        int businessesInNeighbourhood = 0;
+        switch (BusinessType){
+            case "Bars":
+                businessesInNeighbourhood = Math.toIntExact(dao.getBars().stream()
+                        .map(Business::getLocation)
+                        .map(Location::getNeighbourhood)
+                        .filter(neighbourhood -> neighbourhood.getName().equals(neigh))
+                        .count());
+                break;
+            case "Cannabis Stores":
+                businessesInNeighbourhood = Math.toIntExact(dao.getCannabisRetail().stream()
+                        .map(Business::getLocation)
+                        .map(Location::getNeighbourhood)
+                        .filter(neighbourhood -> neighbourhood.getName().equals(neigh))
+                        .count());
+                break;
+            case "Liquor Stores":
+                businessesInNeighbourhood = Math.toIntExact(dao.getAlcoholRetail().stream()
+                        .map(Business::getLocation)
+                        .map(Location::getNeighbourhood)
+                        .filter(neighbourhood -> neighbourhood.getName().equals(neigh))
+                        .count());
+                break;
+            case "Restaurants":
+                businessesInNeighbourhood = Math.toIntExact(dao.getRestaurants().stream()
+                        .map(Business::getLocation)
+                        .map(Location::getNeighbourhood)
+                        .filter(neighbourhood -> neighbourhood.getName().equals(neigh))
+                        .count());
+                break;
+        }
+        //parcelsComboBoxLabel.setText(String.valueOf(businessesInNeighbourhood));
+        return businessesInNeighbourhood;
     }
 
     /**
@@ -303,18 +505,23 @@ public class BusinessesDataController implements Initializable {
     }
 
     /**
-     * creates set of wards based on dao.allBusinesses and sets respective combobox to list
+     * creates set of neighbourhoods based on dao.allBusinesses and sets respective combobox to list
      */
     private void setNeighbourhoods() {
         Set<String> neighbourhoodNames = dao.getAllBusinesses().stream()
                 .map(Business::getLocation)
                 .map(Location::getNeighbourhood)
-                .map(Neighbourhood::getWard)
                 .filter(neighbourhood -> !neighbourhood.isEmpty())
+                .map(Neighbourhood::getName)
                 .collect(Collectors.toSet());
-        neighbourhoods = FXCollections.observableArrayList(neighbourhoodNames);
-        //YOUD PUT YOUR COMBOBOX HERE!!!
-        //neighbourhoodComboBox.setItems(neighbourhoods);
+        String q = "name=";
+        ArrayList<String> queryNeigh = new ArrayList<>();
+        queryNeigh.add("Select an expression");
+        for (String n: neighbourhoodNames) {
+            String query = q + "'" + n.toUpperCase() +"'";
+            queryNeigh.add(query);
+        }
+        neighbourhoods = FXCollections.observableArrayList(queryNeigh);
     }
 
     private void enableSearchResetButtons() {
