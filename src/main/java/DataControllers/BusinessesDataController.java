@@ -1,5 +1,18 @@
 package DataControllers;
 
+import com.esri.arcgisruntime.ArcGISRuntimeEnvironment;
+import com.esri.arcgisruntime.geometry.Point;
+import com.esri.arcgisruntime.geometry.SpatialReferences;
+import com.esri.arcgisruntime.loadable.LoadStatus;
+import com.esri.arcgisruntime.mapping.ArcGISMap;
+import com.esri.arcgisruntime.mapping.BasemapStyle;
+import com.esri.arcgisruntime.mapping.Viewpoint;
+import com.esri.arcgisruntime.mapping.view.Graphic;
+import com.esri.arcgisruntime.mapping.view.GraphicsOverlay;
+import com.esri.arcgisruntime.mapping.view.MapView;
+import com.esri.arcgisruntime.symbology.PictureMarkerSymbol;
+import com.esri.arcgisruntime.symbology.SimpleMarkerSymbol;
+import com.esri.arcgisruntime.symbology.Symbol;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
@@ -11,6 +24,7 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.AnchorPane;
 import DAO.BusinessDAO;
 import classes.*;
+import javafx.scene.layout.StackPane;
 
 import java.net.URL;
 import java.util.*;
@@ -63,12 +77,21 @@ public class BusinessesDataController implements Initializable {
 
     @FXML
     private Label titleText;
+
+    @FXML
+    private Tab businessMap;
     //endregion
 
+    private MapView mapView;
+    private GraphicsOverlay graphicsOverlay;
     BusinessDAO dao;
 
     Map<String, String> params;
     ObservableList<String> wards;
+
+    private static final String CAMPSITE_SYMBOL = "http://maps.google.com/mapfiles/ms/icons/blue.png";
+
+    private StackPane stackPane = new StackPane();
 
     ObservableList<String> businessTypes = FXCollections.observableArrayList(Arrays.asList("Bars", "Cannabis Stores",
             "Liquor Stores", "Restaurants"));
@@ -82,6 +105,9 @@ public class BusinessesDataController implements Initializable {
     PropertyAssessment property = new PropertyAssessment(1124304, 380000, "Y", new Location(53.517970704620545,
             -113.58016177749678, new Address(15006, "85 AVENUE NW"), new Neighbourhood(
                     "LYNNWOOD", "sipiwiyiniwak Ward")), new AssessmentClasses(100, "RESIDENTIAL"));
+
+    public BusinessesDataController() {
+    }
     //1124304,,15006,85 AVENUE NW,Y,4280,LYNNWOOD,sipiwiyiniwak Ward,380000,53.517970704620545,-113.58016177749678,POINT (-113.58016177749678 53.517970704620545),100,,,RESIDENTIAL,,
 
     @Override
@@ -96,6 +122,65 @@ public class BusinessesDataController implements Initializable {
         resetButton.setOnAction(event -> resetSearchFilters());
 
         includePropertyBox.setOnAction(event -> setPropertyPane());
+
+        //Initialises business map
+        // Note: it is not best practice to store API keys in source code.
+        // The API key is referenced here for the convenience of this tutorial.
+        String yourApiKey = "AAPKb0e9a3e549174ef8b1ce1861e64e1a0eizDvf5tYBwfvTV8edXmx8nTtNihwNBr014H8zVeUJvSRI4Ct0WMMsdNuVcjOGfEW";
+        ArcGISRuntimeEnvironment.setApiKey(yourApiKey);
+
+
+        // create a map view to display the map and add it to the stack pane
+        mapView = new MapView();
+        ArcGISMap map = new ArcGISMap(BasemapStyle.ARCGIS_TOPOGRAPHIC);
+
+        Viewpoint point = new Viewpoint(53.547,-113.51, 144447.638572);
+
+        // set the map on the map view
+        mapView.setMap(map);             //Currently Macewan University
+        mapView.setViewpoint(new Viewpoint(53.547, -113.51, 144447.638572));
+
+        // create new graphics overlay and add it to the map view
+        GraphicsOverlay graphicsOverlay = new GraphicsOverlay();
+        mapView.getGraphicsOverlays().add(graphicsOverlay);
+
+        PictureMarkerSymbol symbol = new PictureMarkerSymbol(CAMPSITE_SYMBOL);
+        placePictureMarkerSymbol(symbol, point, graphicsOverlay);
+
+        // create a new graphic with a our point and symbol
+        //Graphic graphic = new Graphic(point.getTargetGeometry(), symbol);
+        //graphicsOverlay.getGraphics().add(graphic);
+
+        stackPane.getChildren().add(mapView);
+        businessMap.setContent(stackPane);
+    }
+
+    /**
+     * Adds a Graphic to the Graphics Overlay using a Point and a Picture Marker
+     * Symbol.
+     *
+     * @param markerSymbol PictureMarkerSymbol to be used
+     * @param graphicPoint where the Graphic is going to be placed
+     */
+    private void placePictureMarkerSymbol(PictureMarkerSymbol markerSymbol, Viewpoint graphicPoint, GraphicsOverlay graphicsOverlay) {
+
+        // set size of the image
+        markerSymbol.setHeight(40);
+        markerSymbol.setWidth(40);
+
+        // load symbol asynchronously
+        markerSymbol.loadAsync();
+
+        // add to the graphic overlay once done loading
+        markerSymbol.addDoneLoadingListener(() -> {
+            if (markerSymbol.getLoadStatus() == LoadStatus.LOADED) {
+                Graphic symbolGraphic = new Graphic(graphicPoint.getTargetGeometry(), markerSymbol);
+                graphicsOverlay.getGraphics().add(symbolGraphic);
+            } else {
+                Alert alert = new Alert(Alert.AlertType.ERROR, "Picture Marker Symbol Failed to Load!");
+                alert.show();
+            }
+        });
 
     }
 
@@ -172,7 +257,10 @@ public class BusinessesDataController implements Initializable {
         addTextFieldToParamMap(streetInput, "streetName");
         addTextFieldToParamMap(neighbourhoodInput, "neighbourhood");
 
-        params.put("ward", wardsComboBox.getSelectionModel().getSelectedItem());
+        if (wardsComboBox.getSelectionModel().getSelectedItem()!=null){
+            params.put("ward", wardsComboBox.getSelectionModel().getSelectedItem());
+        }
+
         params.put("businessType", businessTypeComboBox.getSelectionModel().getSelectedItem());
 
         //do search
@@ -193,6 +281,19 @@ public class BusinessesDataController implements Initializable {
         }
         else {
             loadDataTable();
+        }
+
+        if (businesses!=null) {
+
+            for (Business business : businesses) {
+                GraphicsOverlay graphicsOverlay = new GraphicsOverlay();
+                mapView.getGraphicsOverlays().add(graphicsOverlay);
+                Viewpoint point = new Viewpoint(business.getLocation().getLat(),business.getLocation().getLon(), 144447.638572);
+                PictureMarkerSymbol symbol = new PictureMarkerSymbol(CAMPSITE_SYMBOL);
+                placePictureMarkerSymbol(symbol, point, graphicsOverlay);
+            }
+            //stackPane.getChildren().add(mapView);
+            businessMap.setContent(stackPane);
         }
     }
 
