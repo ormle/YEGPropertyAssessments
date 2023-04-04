@@ -1,30 +1,38 @@
 package DataControllers;
 
 import com.esri.arcgisruntime.ArcGISRuntimeEnvironment;
+import com.esri.arcgisruntime.concurrent.ListenableFuture;
 import com.esri.arcgisruntime.geometry.Point;
 import com.esri.arcgisruntime.geometry.SpatialReferences;
 import com.esri.arcgisruntime.loadable.LoadStatus;
 import com.esri.arcgisruntime.mapping.ArcGISMap;
 import com.esri.arcgisruntime.mapping.BasemapStyle;
 import com.esri.arcgisruntime.mapping.Viewpoint;
-import com.esri.arcgisruntime.mapping.view.Graphic;
-import com.esri.arcgisruntime.mapping.view.GraphicsOverlay;
-import com.esri.arcgisruntime.mapping.view.MapView;
+import com.esri.arcgisruntime.mapping.view.*;
 import com.esri.arcgisruntime.symbology.PictureMarkerSymbol;
 import com.esri.arcgisruntime.symbology.SimpleMarkerSymbol;
 import com.esri.arcgisruntime.symbology.Symbol;
+import com.esri.arcgisruntime.tasks.geocode.GeocodeParameters;
+import com.esri.arcgisruntime.tasks.geocode.GeocodeResult;
+import com.esri.arcgisruntime.tasks.geocode.LocatorTask;
+import javafx.application.Platform;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.event.EventHandler;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
+import javafx.geometry.Point2D;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.input.MouseButton;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.AnchorPane;
 import DAO.BusinessDAO;
 import classes.*;
 import javafx.scene.layout.StackPane;
+import javafx.util.Duration;
 
 import java.net.URL;
 import java.util.*;
@@ -83,11 +91,18 @@ public class BusinessesDataController implements Initializable {
     //endregion
 
     private MapView mapView;
-    private GraphicsOverlay graphicsOverlay;
+    private GraphicsOverlay graphicsOverlay = new GraphicsOverlay();
+
+    private ListenableFuture<IdentifyGraphicsOverlayResult> identifyGraphics;
     BusinessDAO dao;
 
     Map<String, String> params;
     ObservableList<String> wards;
+
+    private LocatorTask locatorTask;
+
+    private ProgressIndicator progressIndicator;
+    ObservableList<String> neighbourhoods;
 
     private static final String CAMPSITE_SYMBOL = "http://maps.google.com/mapfiles/ms/icons/blue.png";
 
@@ -129,7 +144,6 @@ public class BusinessesDataController implements Initializable {
         String yourApiKey = "AAPKb0e9a3e549174ef8b1ce1861e64e1a0eizDvf5tYBwfvTV8edXmx8nTtNihwNBr014H8zVeUJvSRI4Ct0WMMsdNuVcjOGfEW";
         ArcGISRuntimeEnvironment.setApiKey(yourApiKey);
 
-
         // create a map view to display the map and add it to the stack pane
         mapView = new MapView();
         ArcGISMap map = new ArcGISMap(BasemapStyle.ARCGIS_TOPOGRAPHIC);
@@ -140,12 +154,25 @@ public class BusinessesDataController implements Initializable {
         mapView.setMap(map);             //Currently Macewan University
         mapView.setViewpoint(new Viewpoint(53.547, -113.51, 144447.638572));
 
+        // set the callout's default style
+        Callout callout = mapView.getCallout();
+        callout.setLeaderPosition(Callout.LeaderPosition.BOTTOM);
+
+        // create a locatorTask
+        locatorTask = new LocatorTask("https://geocode-api.arcgis.com/arcgis/rest/services/World/GeocodeServer");
+
+        // create geocode task parameters
+        GeocodeParameters geocodeParameters = new GeocodeParameters();
+        // return all attributes
+        geocodeParameters.getResultAttributeNames().add("*");
+        geocodeParameters.setMaxResults(1); // get closest match
+        geocodeParameters.setOutputSpatialReference(mapView.getSpatialReference());
+
         // create new graphics overlay and add it to the map view
-        GraphicsOverlay graphicsOverlay = new GraphicsOverlay();
         mapView.getGraphicsOverlays().add(graphicsOverlay);
 
         PictureMarkerSymbol symbol = new PictureMarkerSymbol(CAMPSITE_SYMBOL);
-        placePictureMarkerSymbol(symbol, point, graphicsOverlay);
+        placePictureMarkerSymbol(symbol, point, graphicsOverlay, "name", "location");
 
         // create a new graphic with a our point and symbol
         //Graphic graphic = new Graphic(point.getTargetGeometry(), symbol);
@@ -153,6 +180,56 @@ public class BusinessesDataController implements Initializable {
 
         stackPane.getChildren().add(mapView);
         businessMap.setContent(stackPane);
+
+        //listen into click events on the map view
+        mapView.addEventHandler(MouseEvent.MOUSE_CLICKED,
+                new EventHandler<MouseEvent>() {
+                    @Override
+                    public void handle(MouseEvent event) {
+                        // Respond to primary (left) button only
+                        if (event.isStillSincePress() && event.getButton() == MouseButton.PRIMARY) {
+                            //make a screen coordinate from the clicked location
+                            Point2D clickedPoint = new Point2D(event
+                                    .getX(), event.getY());
+
+                            // create a map point from a point
+                            Point mapPoint = mapView.screenToLocation(clickedPoint);
+
+                            // identify graphics on the graphics overlay
+                            identifyGraphics = mapView.identifyGraphicsOverlayAsync(graphicsOverlay, clickedPoint, 1, false);
+                            identifyGraphics.addDoneListener(() -> Platform.runLater(() -> createGraphicDialog(mapPoint)));
+
+
+                        }
+                    }
+
+                    private void createGraphicDialog(Point clickedPoint) {
+                        try {
+                            // get the list of graphics returned by identify
+                            IdentifyGraphicsOverlayResult result = identifyGraphics.get();
+                            List<Graphic> graphics = result.getGraphics();
+
+                            if (!graphics.isEmpty()) {
+                                // display the callout
+                                System.out.println("NOT EMPTY, IM THERE");
+                                Callout callout = mapView.getCallout();
+                                callout.setTitle(graphics.get(0).getAttributes().get("Name").toString());
+                                //callout.setDetail(graphics.get(0).getAttributes().get("detail").toString());
+                                callout.showCalloutAt(clickedPoint, Duration.ZERO);
+                                //listen into click events on the map view
+                                mapView.addEventHandler(MouseEvent.MOUSE_CLICKED,
+                                        new EventHandler<MouseEvent>() {
+                                            @Override
+                                            public void handle(MouseEvent event) {
+                                callout.dismiss();}});
+                            }
+                        } catch (Exception e) {
+                            // on any error, display the stack trace
+                            e.printStackTrace();
+                        }
+                    }
+
+                });
     }
 
     /**
@@ -162,7 +239,7 @@ public class BusinessesDataController implements Initializable {
      * @param markerSymbol PictureMarkerSymbol to be used
      * @param graphicPoint where the Graphic is going to be placed
      */
-    private void placePictureMarkerSymbol(PictureMarkerSymbol markerSymbol, Viewpoint graphicPoint, GraphicsOverlay graphicsOverlay) {
+    private void placePictureMarkerSymbol(PictureMarkerSymbol markerSymbol, Viewpoint graphicPoint, GraphicsOverlay graphicsOverlay, String name, String Location) {
 
         // set size of the image
         markerSymbol.setHeight(40);
@@ -175,6 +252,7 @@ public class BusinessesDataController implements Initializable {
         markerSymbol.addDoneLoadingListener(() -> {
             if (markerSymbol.getLoadStatus() == LoadStatus.LOADED) {
                 Graphic symbolGraphic = new Graphic(graphicPoint.getTargetGeometry(), markerSymbol);
+                symbolGraphic.getAttributes().put("Name", name);
                 graphicsOverlay.getGraphics().add(symbolGraphic);
             } else {
                 Alert alert = new Alert(Alert.AlertType.ERROR, "Picture Marker Symbol Failed to Load!");
@@ -224,6 +302,21 @@ public class BusinessesDataController implements Initializable {
         wardsComboBox.setItems(wards);
     }
 
+    /**
+     * creates set of wards based on dao.allBusinesses and sets respective combobox to list
+     */
+    private void setNeighbourhoods() {
+        Set<String> neighbourhoodNames = dao.getAllBusinesses().stream()
+                .map(Business::getLocation)
+                .map(Location::getNeighbourhood)
+                .map(Neighbourhood::getWard)
+                .filter(neighbourhood -> !neighbourhood.isEmpty())
+                .collect(Collectors.toSet());
+        neighbourhoods = FXCollections.observableArrayList(neighbourhoodNames);
+        //YOUD PUT YOUR COMBOBOX HERE!!!
+        //neighbourhoodComboBox.setItems(neighbourhoods);
+    }
+
     private void enableSearchResetButtons() {
         searchButton.setDisable(false);
         resetButton.setDisable(false);
@@ -244,6 +337,68 @@ public class BusinessesDataController implements Initializable {
                 new SimpleStringProperty(property.getValue().getLocation().getLatLon()));
         categoriesTableColumn.setCellValueFactory(property ->
                 new SimpleStringProperty(property.getValue().getCategories()));
+
+        if (businesses!=null) {
+            mapView.getGraphicsOverlays().clear();
+            graphicsOverlay.getGraphics().clear();
+            mapView.getGraphicsOverlays().add(graphicsOverlay);
+            for (Business business : businesses) {
+                Viewpoint point = new Viewpoint(business.getLocation().getLat(),business.getLocation().getLon(), 144447.638572);
+                PictureMarkerSymbol symbol = new PictureMarkerSymbol(CAMPSITE_SYMBOL);
+                placePictureMarkerSymbol(symbol, point, graphicsOverlay, business.getName(), business.getLocation().toString());
+            }
+            //listen into click events on the map view
+            mapView.addEventHandler(MouseEvent.MOUSE_CLICKED,
+                    new EventHandler<MouseEvent>() {
+                        @Override
+                        public void handle(MouseEvent event) {
+                            // Respond to primary (left) button only
+                            if (event.isStillSincePress() && event.getButton() == MouseButton.PRIMARY) {
+                                //make a screen coordinate from the clicked location
+                                Point2D clickedPoint = new Point2D(event
+                                        .getX(), event.getY());
+
+                                // create a map point from a point
+                                Point mapPoint = mapView.screenToLocation(clickedPoint);
+
+                                // identify graphics on the graphics overlay
+                                identifyGraphics = mapView.identifyGraphicsOverlayAsync(graphicsOverlay, clickedPoint, 1, false);
+                                identifyGraphics.addDoneListener(() -> Platform.runLater(() -> createGraphicDialog(mapPoint)));
+
+
+                            }
+                        }
+
+                        private void createGraphicDialog(Point clickedPoint) {
+                            try {
+                                // get the list of graphics returned by identify
+                                IdentifyGraphicsOverlayResult result = identifyGraphics.get();
+                                List<Graphic> graphics = result.getGraphics();
+
+                                if (!graphics.isEmpty()) {
+                                    // display the callout
+                                    Callout callout = mapView.getCallout();
+                                    callout.setTitle(graphics.get(0).getAttributes().get("Name").toString());
+                                    //callout.setDetail(graphics.get(0).getAttributes().get("detail").toString());
+                                    callout.showCalloutAt(clickedPoint, Duration.ZERO);
+                                    //listen into click events on the map view
+                                    mapView.addEventHandler(MouseEvent.MOUSE_CLICKED,
+                                            new EventHandler<MouseEvent>() {
+                                                @Override
+                                                public void handle(MouseEvent event) {
+                                                    callout.dismiss();}});
+                                }
+                            } catch (Exception e) {
+                                // on any error, display the stack trace
+                                e.printStackTrace();
+                            }
+                        }
+
+                    });
+
+            //stackPane.getChildren().add(mapView);
+            businessMap.setContent(stackPane);
+        }
     }
 
 
@@ -286,12 +441,59 @@ public class BusinessesDataController implements Initializable {
         if (businesses!=null) {
 
             for (Business business : businesses) {
-                GraphicsOverlay graphicsOverlay = new GraphicsOverlay();
-                mapView.getGraphicsOverlays().add(graphicsOverlay);
                 Viewpoint point = new Viewpoint(business.getLocation().getLat(),business.getLocation().getLon(), 144447.638572);
                 PictureMarkerSymbol symbol = new PictureMarkerSymbol(CAMPSITE_SYMBOL);
-                placePictureMarkerSymbol(symbol, point, graphicsOverlay);
+                placePictureMarkerSymbol(symbol, point, graphicsOverlay, business.getName(), business.getLocation().toString());
             }
+            //listen into click events on the map view
+            mapView.addEventHandler(MouseEvent.MOUSE_CLICKED,
+                    new EventHandler<MouseEvent>() {
+                        @Override
+                        public void handle(MouseEvent event) {
+                            // Respond to primary (left) button only
+                            if (event.isStillSincePress() && event.getButton() == MouseButton.PRIMARY) {
+                                //make a screen coordinate from the clicked location
+                                Point2D clickedPoint = new Point2D(event
+                                        .getX(), event.getY());
+
+                                // create a map point from a point
+                                Point mapPoint = mapView.screenToLocation(clickedPoint);
+
+                                // identify graphics on the graphics overlay
+                                identifyGraphics = mapView.identifyGraphicsOverlayAsync(graphicsOverlay, clickedPoint, 1, false);
+                                identifyGraphics.addDoneListener(() -> Platform.runLater(() -> createGraphicDialog(mapPoint)));
+
+
+                            }
+                        }
+
+                        private void createGraphicDialog(Point clickedPoint) {
+                            try {
+                                // get the list of graphics returned by identify
+                                IdentifyGraphicsOverlayResult result = identifyGraphics.get();
+                                List<Graphic> graphics = result.getGraphics();
+
+                                if (!graphics.isEmpty()) {
+                                    // display the callout
+                                    Callout callout = mapView.getCallout();
+                                    callout.setTitle(graphics.get(0).getAttributes().get("Name").toString());
+                                    //callout.setDetail(graphics.get(0).getAttributes().get("detail").toString());
+                                    callout.showCalloutAt(clickedPoint, Duration.ZERO);
+                                    //listen into click events on the map view
+                                    mapView.addEventHandler(MouseEvent.MOUSE_CLICKED,
+                                            new EventHandler<MouseEvent>() {
+                                                @Override
+                                                public void handle(MouseEvent event) {
+                                                    callout.dismiss();}});
+                                }
+                            } catch (Exception e) {
+                                // on any error, display the stack trace
+                                e.printStackTrace();
+                            }
+                        }
+
+                    });
+
             //stackPane.getChildren().add(mapView);
             businessMap.setContent(stackPane);
         }
