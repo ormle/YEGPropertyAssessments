@@ -16,6 +16,7 @@ import com.esri.arcgisruntime.portal.Portal;
 import com.esri.arcgisruntime.portal.PortalItem;
 import com.esri.arcgisruntime.symbology.PictureMarkerSymbol;
 import com.esri.arcgisruntime.tasks.geocode.GeocodeParameters;
+import com.esri.arcgisruntime.tasks.geocode.GeocodeResult;
 import com.esri.arcgisruntime.tasks.geocode.LocatorTask;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleObjectProperty;
@@ -41,6 +42,7 @@ import javafx.util.Duration;
 
 import java.net.URL;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -79,8 +81,6 @@ public class BusinessesDataController implements Initializable {
     @FXML
     private TextField neighbourhoodInput;
     @FXML
-    private TextField radiusInput;
-    @FXML
     private Label propertyInfo;
     @FXML
     private AnchorPane propertyPane;
@@ -96,6 +96,11 @@ public class BusinessesDataController implements Initializable {
     private Tab businessMap;
     //endregion
 
+    private TextField radiusInput;
+
+    private TextField propertySearch;
+
+    private Button searchProperty;
     private MapView mapView;
     private GraphicsOverlay graphicsOverlay = new GraphicsOverlay();
 
@@ -111,6 +116,8 @@ public class BusinessesDataController implements Initializable {
 
     private static final String CAMPSITE_SYMBOL = "http://maps.google.com/mapfiles/ms/icons/blue.png";
 
+    private static final String REDMAP_SYMBOL = "http://maps.google.com/mapfiles/ms/icons/red.png";
+
     private StackPane stackPane = new StackPane();
 
     ObservableList<String> businessTypes = FXCollections.observableArrayList(Arrays.asList("Bars", "Cannabis Stores",
@@ -119,6 +126,7 @@ public class BusinessesDataController implements Initializable {
     ObservableList<Business> businesses;
     private ServiceFeatureTable featureTable;
     private VBox controlsVBox;
+
     private ComboBox<String> parcelsComboBox;
     private Label parcelsComboBoxLabel;
     private Label color1Label;
@@ -171,16 +179,6 @@ public class BusinessesDataController implements Initializable {
         Callout callout = mapView.getCallout();
         callout.setLeaderPosition(Callout.LeaderPosition.BOTTOM);
 
-        // create a locatorTask
-        locatorTask = new LocatorTask("https://geocode-api.arcgis.com/arcgis/rest/services/World/GeocodeServer");
-
-        // create geocode task parameters
-        GeocodeParameters geocodeParameters = new GeocodeParameters();
-        // return all attributes
-        geocodeParameters.getResultAttributeNames().add("*");
-        geocodeParameters.setMaxResults(1); // get closest match
-        geocodeParameters.setOutputSpatialReference(mapView.getSpatialReference());
-
         // create new graphics overlay and add it to the map view
         mapView.getGraphicsOverlays().add(graphicsOverlay);
 
@@ -195,15 +193,50 @@ public class BusinessesDataController implements Initializable {
 
         setUpUI();
 
+        //Create text input for property search address and radius distance
+        propertySearch = new TextField();
+        propertySearch.setPromptText("Property search bar");
+        propertySearch.setMaxWidth(260);
+        radiusInput = new TextField();
+        radiusInput.setPromptText("Radius box");
+        radiusInput.setMaxWidth(260);
+        searchProperty = new Button("Search");
+        searchProperty.setMaxWidth(260);
+
         // create feature layer
         createFeatureLayer(map);
 
-        controlsVBox.getChildren().addAll(parcelsComboBoxLabel, parcelsComboBox, color1Label, color2Label, color3Label);
-        stackPane.getChildren().add(mapView);
+        controlsVBox.getChildren().addAll(parcelsComboBoxLabel, parcelsComboBox, color1Label, color2Label, color3Label, propertySearch, searchProperty);
+        stackPane.getChildren().addAll(mapView);
         stackPane.getChildren().add(controlsVBox);
         stackPane.setAlignment(controlsVBox, Pos.TOP_LEFT);
         stackPane.setMargin(controlsVBox, new Insets(10, 0, 0, 10));
         businessMap.setContent(stackPane);
+
+        // create a locatorTask
+        locatorTask = new LocatorTask("https://geocode-api.arcgis.com/arcgis/rest/services/World/GeocodeServer");
+
+        // create geocode task parameters
+        GeocodeParameters geocodeParameters = new GeocodeParameters();
+        //geocodeParameters.setCountryCode("CANADA");
+        // return all attributes
+        geocodeParameters.getResultAttributeNames().add("*");
+        geocodeParameters.setMaxResults(1); // get closest match
+        geocodeParameters.setOutputSpatialReference(mapView.getSpatialReference());
+
+        searchProperty.setOnAction(event -> {
+            String query;
+            if (!searchProperty.getText().equals("")){
+                query = propertySearch.getText();
+                mapView.getCallout().dismiss();
+
+                // run the locatorTask geocode task
+                ListenableFuture<List<GeocodeResult>> results = locatorTask.geocodeAsync(query, geocodeParameters);
+
+                // add a listener to display the result when loaded
+                results.addDoneListener(new ResultsLoadedListener(results));
+            }
+        });
 
         //listen into click events on the map view
         mapView.addEventHandler(MouseEvent.MOUSE_CLICKED,
@@ -233,10 +266,10 @@ public class BusinessesDataController implements Initializable {
 
                             if (!graphics.isEmpty()) {
                                 // display the callout
-                                System.out.println("NOT EMPTY, IM THERE");
+
                                 Callout callout = mapView.getCallout();
                                 callout.setTitle(graphics.get(0).getAttributes().get("Name").toString());
-                                //callout.setDetail(graphics.get(0).getAttributes().get("detail").toString());
+                                callout.setDetail(graphics.get(0).getAttributes().get("Location").toString());
                                 callout.showCalloutAt(clickedPoint, Duration.ZERO);
                                 //listen into click events on the map view
                                 mapView.addEventHandler(MouseEvent.MOUSE_CLICKED,
@@ -254,6 +287,100 @@ public class BusinessesDataController implements Initializable {
                 });
     }
 
+    /**
+     * Runnable listener to update marker and callout when new results are loaded.
+     */
+    private class ResultsLoadedListener implements Runnable {
+
+        private final ListenableFuture<List<GeocodeResult>> results;
+
+        /**
+         * Constructs a runnable listener for the geocode results.
+         *
+         * @param results results from a {@link LocatorTask#geocodeAsync} task
+         */
+        ResultsLoadedListener(ListenableFuture<List<GeocodeResult>> results) {
+            this.results = results;
+        }
+
+        @Override
+        public void run() {
+
+            try {
+                List<GeocodeResult> geocodes = results.get();
+                if (geocodes.size() > 0) {
+                    // get the top result
+                    GeocodeResult geocode = geocodes.get(0);
+
+                    // get attributes from the result for the callout
+                    String addrType = geocode.getAttributes().get("Addr_type").toString();
+                    String placeName = geocode.getAttributes().get("PlaceName").toString();
+                    String placeAddr = geocode.getAttributes().get("Place_addr").toString();
+                    String matchAddr = geocode.getAttributes().get("Match_addr").toString();
+                    String locType = geocode.getAttributes().get("Type").toString();
+
+                    // format callout details
+                    String title;
+                    String detail;
+                    switch (addrType) {
+                        case "POI":
+                            title = placeName.equals("") ? "" : placeName;
+                            if (!placeAddr.equals("")) {
+                                detail = placeAddr;
+                            } else if (!matchAddr.equals("") && !locType.equals("")) {
+                                detail = !matchAddr.contains(",") ? locType : matchAddr.substring(matchAddr.indexOf(", ") + 2);
+                            } else {
+                                detail = "";
+                            }
+                            break;
+                        case "StreetName":
+                        case "PointAddress":
+                        case "Postal":
+                            if (matchAddr.contains(",")) {
+                                title = matchAddr.equals("") ? "" : matchAddr.split(",")[0];
+                                detail = matchAddr.equals("") ? "" : matchAddr.substring(matchAddr.indexOf(", ") + 2);
+                                break;
+                            }
+                        default:
+                            title = "";
+                            detail = matchAddr.equals("") ? "" : matchAddr;
+                    }
+
+                    HashMap<String, Object> attributes = new HashMap<>();
+                    attributes.put("title", title);
+                    attributes.put("detail", detail);
+
+                    // create the marker
+                    PictureMarkerSymbol redsymbol = new PictureMarkerSymbol(REDMAP_SYMBOL);
+                    Graphic marker = new Graphic(geocode.getDisplayLocation(), attributes, redsymbol);
+
+                    // set the viewpoint to the marker
+                    Point location = geocodes.get(0).getDisplayLocation();
+                    mapView.setViewpointCenterAsync(location, 10000);
+
+                    // update the marker
+                    Platform.runLater(() -> {
+                        // clear out previous results
+                        //graphicsOverlay.getGraphics().clear();
+                        //searchBox.hide();
+
+                        // add the marker to the graphics overlay
+                        graphicsOverlay.getGraphics().add(marker);
+
+                        // display the callout
+                        Callout callout = mapView.getCallout();
+                        callout.setTitle(marker.getAttributes().get("title").toString());
+                        callout.setDetail(marker.getAttributes().get("detail").toString());
+                        callout.showCalloutAt(location, new Point2D(0, -24), Duration.ZERO);
+                    });
+                }
+
+            } catch (InterruptedException | ExecutionException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
     private void setUpUI(){
         // create a control panel
         controlsVBox = new VBox(6);
@@ -266,7 +393,7 @@ public class BusinessesDataController implements Initializable {
         parcelsComboBoxLabel = new Label("WHERE EXPRESSION: ");
         parcelsComboBoxLabel.setTextFill(Color.WHITE);
 
-        color1Label = new Label("Orange -> 3 or less Businesses");
+        color1Label = new Label("Orange -> 3 Businesses or less");
         color1Label.setStyle("-fx-text-fill: orange;");
         color2Label = new Label("Red -> 4 to 10 Businesses");
         color2Label.setStyle("-fx-text-fill: red;");
@@ -441,7 +568,7 @@ public class BusinessesDataController implements Initializable {
      * @param markerSymbol PictureMarkerSymbol to be used
      * @param graphicPoint where the Graphic is going to be placed
      */
-    private void placePictureMarkerSymbol(PictureMarkerSymbol markerSymbol, Viewpoint graphicPoint, GraphicsOverlay graphicsOverlay, String name, String Location) {
+    private void placePictureMarkerSymbol(PictureMarkerSymbol markerSymbol, Viewpoint graphicPoint, GraphicsOverlay graphicsOverlay, String name, String location) {
 
         // set size of the image
         markerSymbol.setHeight(40);
@@ -455,6 +582,7 @@ public class BusinessesDataController implements Initializable {
             if (markerSymbol.getLoadStatus() == LoadStatus.LOADED) {
                 Graphic symbolGraphic = new Graphic(graphicPoint.getTargetGeometry(), markerSymbol);
                 symbolGraphic.getAttributes().put("Name", name);
+                symbolGraphic.getAttributes().put("Location", location);
                 graphicsOverlay.getGraphics().add(symbolGraphic);
             } else {
                 Alert alert = new Alert(Alert.AlertType.ERROR, "Picture Marker Symbol Failed to Load!");
@@ -552,7 +680,7 @@ public class BusinessesDataController implements Initializable {
             for (Business business : businesses) {
                 Viewpoint point = new Viewpoint(business.getLocation().getLat(),business.getLocation().getLon(), 144447.638572);
                 PictureMarkerSymbol symbol = new PictureMarkerSymbol(CAMPSITE_SYMBOL);
-                placePictureMarkerSymbol(symbol, point, graphicsOverlay, business.getName(), business.getLocation().toString());
+                placePictureMarkerSymbol(symbol, point, graphicsOverlay, business.getName(), business.getLocation().getAddress().toString());
             }
             //listen into click events on the map view
             mapView.addEventHandler(MouseEvent.MOUSE_CLICKED,
